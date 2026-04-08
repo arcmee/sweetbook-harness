@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sweetbook
+      POSTGRES_USER: sweetbook
+      POSTGRES_PASSWORD: sweetbook
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sweetbook -d sweetbook"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+    volumes:
+      - sweetbook-postgres-data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ../sweetbook-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgres://sweetbook:sweetbook@postgres:5432/sweetbook
+      SWEETBOOK_ENV: ${SWEETBOOK_ENV:-sandbox}
+      SWEETBOOK_API_KEY: ${SWEETBOOK_API_KEY:-}
+      PROTOTYPE_UPLOAD_DIR: /app/var/prototype-uploads
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - sweetbook-backend-uploads:/app/var/prototype-uploads
+
+  frontend:
+    build:
+      context: ../sweetbook-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_PROXY_TARGET: http://backend:3000
+    ports:
+      - "5173:5173"
+
+volumes:
+  sweetbook-postgres-data:
+  sweetbook-backend-uploads:
